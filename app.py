@@ -5,6 +5,24 @@ import hashlib
 import random
 import string
 
+
+import pickle
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem.porter import PorterStemmer
+
+nltk.download('stopwords')
+
+filename = 'GaussianNB_nlp_model.sav'
+
+cv = pickle.load(open('bow_pickle.pickle', 'rb'))
+
+classifier = pickle.load(open(filename, 'rb'))
+
+nltk.download('stopwords')
+
+
 import boto3
 import flask.json
 from flask import Flask, request, jsonify
@@ -56,19 +74,37 @@ def translate(text):
 
 def measure_severity(text):
 
+
+
     try:
-        comprehend = boto3.client(service_name='comprehend', region_name='eu-central-1', use_ssl=True,
-                                 aws_access_key_id=aws_access_key_id,
-                                 aws_secret_access_key=aws_secret_access_key)
+        new_review = text
+        new_review = re.sub('[^a-zA-Z]', ' ', new_review)
+        new_review = new_review.lower()
+        new_review = new_review.split()
+        ps = PorterStemmer()
+        all_stopwords = stopwords.words('english')
+        all_stopwords.remove('not')
+        new_review = [ps.stem(word) for word in new_review if not word in set(all_stopwords)]
+        new_review = ' '.join(new_review)
+        new_corpus = [new_review]
+        new_X_test = cv.transform(new_corpus).toarray()
+        new_y_pred = classifier.predict(new_X_test)
 
-        result = comprehend.classify_document(Text=text,
-                                             EndpointArn=endpoint_arn)
+        response = {'severity': str(new_y_pred[0]), 'score': str(0.16)}
 
-        score = "{:.2f}".format(result['Classes'][0]['Score'])
 
-        response = {'severity': result['Classes'][0]['Name'], 'score' : str(score)}
+        # comprehend = boto3.client(service_name='comprehend', region_name='eu-central-1', use_ssl=True,
+        #                          aws_access_key_id=aws_access_key_id,
+        #                          aws_secret_access_key=aws_secret_access_key)
+        #
+        # result = comprehend.classify_document(Text=text,
+        #                                      EndpointArn=endpoint_arn)
+        #
+        # score = "{:.2f}".format(result['Classes'][0]['Score'])
+        #
+        # response = {'severity': result['Classes'][0]['Name'], 'score' : str(score)}
     except:
-        response = {'severity': None, 'score' : None}
+        response = {'severity': None, 'score': None}
 
     return response
 
